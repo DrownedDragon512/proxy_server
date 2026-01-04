@@ -1,0 +1,7 @@
+[Sun Jan  4 19:10:01 2026] Loaded 3 blocked domains.
+[Sun Jan  4 19:10:01 2026] Universal Proxy listening on port 8080
+[Sun Jan  4 19:10:05 2026] Client: 127.0.0.1 | Request: example.com | Action: CACHE_MISS
+[Sun Jan  4 19:10:08 2026] Client: 127.0.0.1 | Request: example.com | Action: CACHE_HIT
+[Sun Jan  4 19:10:12 2026] Client: 127.0.0.1 | Request: google.com | Action: TUNNEL_START
+[Sun Jan  4 19:10:12 2026] Client: 127.0.0.1 | Request: google.com | Action: TUNNEL_CLOSED
+[Sun Jan  4 19:10:15 2026] Client: 127.0.0.1 | Request: badsite.com | Action: BLOCKED

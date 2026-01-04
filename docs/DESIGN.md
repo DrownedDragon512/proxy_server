@@ -3,6 +3,27 @@
 ## 1. High-Level Architecture
 The system is a multi-threaded HTTP/HTTPS proxy server implemented in C++. It acts as an intermediary between clients (browsers/curl) and destination servers.
 
+### Architecture Diagram
+      +--------+        +--------------------------+        +-------------+
+      |        |        |      Proxy Server        |        |             |
+      | Client |------->|  [Listener (Port 8080)]  |------->| Destination |
+      | (curl) |        |           |              |        |   Server    |
+      |        |<-------|  [Connection Handler]    |<-------|             |
+      +--------+        |           |              |        +-------------+
+                        |           v              |
+                        |     [Request Parser]     |
+                        |           |              |
+                        |           v              |
+                        |     [Domain Filter]      |
+                        |    (Blocked Domains)     |
+                        |           |              |
+                        |   +-------+-------+      |
+                        |   |               |      |
+                        |   v               v      |
+                        | [HTTP Cache]   [HTTPS    |
+                        |   (Mutex)      Tunnel]   |
+                        +--------------------------+
+
 ### Components:
 1.  **Listener:** A main thread that listens on a TCP port (8080) for incoming client connections.
 2.  **Connection Handler:** Spawns a dedicated thread for each client to handle the request lifecycle independently.
@@ -11,8 +32,6 @@ The system is a multi-threaded HTTP/HTTPS proxy server implemented in C++. It ac
 5.  **Forwarder (HTTP):** Relays standard HTTP traffic, managing header modification ("Connection: close") to ensure robust caching.
 6.  **Tunneler (HTTPS):** Handles the `CONNECT` method using `poll()` to create a blind TCP tunnel for encrypted traffic.
 7.  **Cache Manager:** A thread-safe `std::map` protected by a Mutex to store and retrieve responses for repeated GET requests.
-
-
 
 ## 2. Concurrency Model
 **Model:** Thread-per-Connection
