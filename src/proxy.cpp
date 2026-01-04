@@ -5,10 +5,15 @@
 #include <unistd.h>
 #include <string>
 #include <sstream>
-#include <netdb.h> // For gethostbyname (DNS lookup)
+#include <netdb.h>
+#include <fstream>
+#include <vector>
+#include <pthread.h> // Threads library
 
 #define PORT 8080
 #define BACKLOG 10 
+
+std::vector<std::string> blocked_domains;
 
 struct ParsedRequest {
     std::string method;
@@ -17,7 +22,38 @@ struct ParsedRequest {
     std::string path;
 };
 
-// Parser Function
+// --- 1. LOADER ---
+void load_blocked_domains(const char* filename) {
+    std::ifstream file(filename);
+    std::string line;
+    if (file.is_open()) {
+        while (std::getline(file, line)) {
+            // Fix Windows/Linux line endings
+            if (!line.empty() && line[line.size()-1] == '\r') line.erase(line.size()-1);
+            // Trim spaces
+            while(!line.empty() && isspace(line.back())) line.pop_back(); 
+            
+            if (!line.empty()) blocked_domains.push_back(line);
+        }
+        file.close();
+        std::cout << "Loaded " << blocked_domains.size() << " blocked domains." << std::endl;
+    } else {
+        std::cerr << "Warning: Could not open blocked domains file!" << std::endl;
+    }
+}
+
+// --- 2. FILTER ---
+bool is_blocked(const std::string& host) {
+    for (const auto& domain : blocked_domains) {
+        // Check if host IS the domain or ENDS WITH the domain
+        if (host == domain || (host.length() > domain.length() && 
+            host.substr(host.length() - domain.length()) == domain)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 ParsedRequest parse_request(const std::string& raw_request) {
     ParsedRequest req;
     req.port = 80;
@@ -26,12 +62,10 @@ ParsedRequest parse_request(const std::string& raw_request) {
     ss >> req.method >> url >> protocol;
     
     size_t host_start = url.find("://");
-    if (host_start != std::string::npos) host_start += 3; 
-    else host_start = 0;
+    if (host_start != std::string::npos) host_start += 3; else host_start = 0;
     
     size_t path_start = url.find('/', host_start);
     std::string host_port_str;
-    
     if (path_start != std::string::npos) {
         host_port_str = url.substr(host_start, path_start - host_start);
         req.path = url.substr(path_start);
@@ -50,13 +84,9 @@ ParsedRequest parse_request(const std::string& raw_request) {
     return req;
 }
 
-// --- NEW: Helper to connect to the target server ---
 int connect_to_host(const std::string& host, int port) {
     struct hostent* server = gethostbyname(host.c_str());
-    if (server == NULL) {
-        std::cerr << "DNS Lookup failed for: " << host << std::endl;
-        return -1;
-    }
+    if (server == NULL) return -1;
 
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) return -1;
@@ -68,18 +98,59 @@ int connect_to_host(const std::string& host, int port) {
     serv_addr.sin_port = htons(port);
 
     if (connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
-        std::cerr << "Connection to target failed!" << std::endl;
         close(sockfd);
         return -1;
     }
     return sockfd;
 }
 
+// --- 3. WORKER THREAD ---
+void* handle_client(void* socket_desc) {
+    int client_socket = *(int*)socket_desc;
+    delete (int*)socket_desc; 
+
+    char buffer[4096] = {0}; 
+    int bytes_read = read(client_socket, buffer, 4096);
+    
+    if (bytes_read > 0) {
+        std::string raw_request(buffer);
+        ParsedRequest req = parse_request(raw_request);
+        
+        // Print Thread ID so we know concurrency is working
+        pthread_t tid = pthread_self();
+
+        if (is_blocked(req.host)) {
+            std::cout << "[Thread " << tid << "] BLOCKED: " << req.host << std::endl;
+            std::string response = "HTTP/1.1 403 Forbidden\r\nContent-Length: 13\r\n\r\nAccess Denied";
+            write(client_socket, response.c_str(), response.length());
+        } 
+        else {
+            std::cout << "[Thread " << tid << "] Forwarding: " << req.host << std::endl;
+            int target_socket = connect_to_host(req.host, req.port);
+            
+            if (target_socket >= 0) {
+                write(target_socket, buffer, bytes_read);
+                char server_buffer[4096];
+                int server_bytes;
+                while ((server_bytes = read(target_socket, server_buffer, sizeof(server_buffer))) > 0) {
+                    write(client_socket, server_buffer, server_bytes);
+                }
+                close(target_socket);
+            } else {
+                std::cerr << "[Thread " << tid << "] Failed to connect to target." << std::endl;
+            }
+        }
+    }
+    close(client_socket);
+    return 0;
+}
+
 int main() {
-    int server_fd, client_socket;
+    load_blocked_domains("config/blocked_domains.txt");
+
+    int server_fd;
     struct sockaddr_in address;
     int opt = 1;
-    int addrlen = sizeof(address);
 
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) return 1;
     setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt));
@@ -91,38 +162,26 @@ int main() {
     if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) return 1;
     if (listen(server_fd, BACKLOG) < 0) return 1;
 
-    std::cout << "Proxy Server listening on port " << PORT << "..." << std::endl;
+    std::cout << "Concurrent Proxy Server listening on port " << PORT << "..." << std::endl;
 
     while (true) {
-        if ((client_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) continue;
-
-        char buffer[4096] = {0}; 
-        int bytes_read = read(client_socket, buffer, 4096);
+        struct sockaddr_in client_addr;
+        socklen_t client_len = sizeof(client_addr);
+        int* new_sock = new int; 
         
-        if (bytes_read > 0) {
-            std::string raw_request(buffer);
-            ParsedRequest req = parse_request(raw_request);
-            
-            std::cout << "Forwarding to: " << req.host << std::endl;
-
-            // 1. Connect to the Real Server (e.g., example.com)
-            int target_socket = connect_to_host(req.host, req.port);
-            
-            if (target_socket >= 0) {
-                // 2. Forward the Client's request to the Real Server
-                write(target_socket, buffer, bytes_read);
-
-                // 3. Read the Real Server's response and send it back to Client
-                char server_buffer[4096];
-                int server_bytes;
-                while ((server_bytes = read(target_socket, server_buffer, sizeof(server_buffer))) > 0) {
-                    write(client_socket, server_buffer, server_bytes);
-                }
-                
-                close(target_socket);
-            }
+        *new_sock = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
+        
+        if (*new_sock < 0) {
+            delete new_sock;
+            continue;
         }
-        close(client_socket);
+
+        pthread_t thread_id;
+        if (pthread_create(&thread_id, NULL, handle_client, (void*)new_sock) < 0) {
+            delete new_sock;
+            continue;
+        }
+        pthread_detach(thread_id); // Let the thread run independently
     }
     return 0;
 }
