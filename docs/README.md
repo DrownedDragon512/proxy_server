@@ -91,6 +91,8 @@ curl -x localhost:8080 https://google.com
 curl -x localhost:8080 http://badsite.com
 
 ---
+
+## Workflow Diagram
 <p align="center">
   <img src="architecture.svg" alt="Workflow Diagram" width="100%">
 </p>
