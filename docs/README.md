@@ -92,5 +92,5 @@ curl -x localhost:8080 http://badsite.com
 
 ---
 <p align="center">
-  <img src="docs/architecture.svg" alt="Workflow Diagram" width="100%">
+  <img src="architecture.svg" alt="Workflow Diagram" width="100%">
 </p>
