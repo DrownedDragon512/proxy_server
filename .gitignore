@@ -1,0 +1,6 @@
+# Ignore compiled binaries
+proxy_server
+*.o
+
+# Ignore VS Code settings (optional, but recommended)
+.vscode/
