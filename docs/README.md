@@ -75,22 +75,22 @@ By default, the proxy listens on port 8080.
 
 Open a new terminal and use curl to test the proxy functionality.
 
-## 1️. Standard HTTP (Cache Miss & Cache Hit)
+### 1️. Standard HTTP (Cache Miss & Cache Hit)
 - First request (downloads from web → CACHE_MISS)
 curl -x localhost:8080 http://example.com
 
 - Second request (served from memory → CACHE_HIT)
 curl -x localhost:8080 http://example.com
 
-## 2️. HTTPS Tunneling (Secure)
+### 2️. HTTPS Tunneling (Secure)
 - Secure connection via CONNECT tunnel
 curl -x localhost:8080 https://google.com
 
-## 3️. Domain Blocking
+### 3️. Domain Blocking
 - Attempt to access a blocked domain
 curl -x localhost:8080 http://badsite.com
 
 ---
 <p align="center">
-  <img src="workflow%20(2).svg" alt="Workflow Diagram" width="800">
+  <img src="docs/architecture.svg" alt="Workflow Diagram" width="100%">
 </p>
