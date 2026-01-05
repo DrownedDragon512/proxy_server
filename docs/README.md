@@ -61,12 +61,12 @@ proxy_project/
 
 ## Build & Run
 1️. Build the Project:
-Use the provided Makefile to compile the proxy server:
+Use the provided Makefile to compile the proxy server: 
 make clean && make
 
 2️. Start the Server:
 Run the compiled binary.
-By default, the proxy listens on port 8080.
+By default, the proxy listens on port 8080: 
 ./proxy_server
 
 ---
