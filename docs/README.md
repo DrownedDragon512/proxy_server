@@ -11,7 +11,7 @@ The proxy uses a **Thread-per-Connection** concurrency model to handle multiple 
 
 ---
 
-## Demo Video: **[Watch Full Demo Video](https://youtu.be/_fedb3gKZok)**
+## Demo Video: **[Watch Full Demo Video](https://www.youtube.com/watch?v=ggeBOGcsDJc)**
 
 ---
 
